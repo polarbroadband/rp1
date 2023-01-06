@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dns-svr
+  labels:
+    service: dns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: dns
+  template:
+    metadata:
+      labels:
+        service: dns
+    spec:
+      containers:
+      - name: dns-svr
+        image: polarbroadband/godev:0.1
+        command: ['tail', '-f', '/dev/null']
+        workingDir: /go/src/main
+        volumeMounts:
+        - mountPath: /go/src
+          name: src
+        ports:
+        - containerPort: 53
+          protocol: UDP
+          name: dns-svc
+        envFrom:
+        - secretRef:
+            name: cirrus-etcd
+        env:
+        - name: ETCD_ENDPOINTS
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_ENDPOINTS
+        - name: ETCD_DIAL_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_DIAL_TIMEOUT
+        - name: ETCD_OPS_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_OPS_TIMEOUT
+        - name: ETCD_IaC_DNS
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_IaC_DNS
+      volumes:
+      - name: src
+        hostPath:
+          # directory location on host -- minikube container
+          path: /rp1/dns_server
+          # this field is optional
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dns-svr
+spec:
+  selector:
+    service: dns
+  ports:
+  - name: dns-svr
+    protocol: UDP
+    port: 53
+    targetPort: dns-svc

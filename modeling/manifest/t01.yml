@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: t01
+spec:
+  containers:
+  - image: polarbroadband/godev:0.1
+    name: t01
+    command: ['tail', '-f', '/dev/null']
+    workingDir: /go/src/main
+    volumeMounts:
+    - mountPath: /go/src
+      name: src
+  volumes:
+  - name: src
+    hostPath:
+      # directory location on host -- minikube container
+      path: /rp1/modeling
+      # this field is optional
+      type: Directory

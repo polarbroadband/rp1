@@ -1,0 +1,28 @@
+apiVersion: service/v1
+kind: DHCP
+metadata:
+  name: t01
+  labels:
+    siteID: t01
+    category: edge
+    region: ontario-south
+spec:
+  records:
+  - type: A
+    fqdn: t01.cirrus.io
+    ttl: 10
+    addr:
+      - 192.168.1.1
+      - 10.0.1.1
+  - type: AAAA
+    fqdn: t01.cirrus.io
+    addr:
+      - fd00:8::1
+  - type: AAAA
+    fqdn: cp.t01.cirrus.io
+    addr:
+      - fd00:8::9:1
+  - type: AAAA
+    fqdn: up.t01.cirrus.io
+    addr:
+      - fd00:8::a:1

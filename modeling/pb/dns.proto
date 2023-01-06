@@ -1,0 +1,30 @@
+syntax = "proto3";
+package dns;
+
+// import "google/protobuf/timestamp.proto";
+
+option go_package = "../pb";
+
+// message Record {
+//     string FQDN = 1;
+//     string Type = 2;
+//     int64 TTL = 3;
+//     repeated string Addr = 4;
+// }
+
+// message Zone {
+//     repeated Record Records = 1;
+// }
+
+message Zone {
+    map<string, Category> Records = 1;
+}
+
+message Category {
+    map<string, Record> Type = 1;
+}
+
+message Record {
+    repeated string Addr = 1;
+    int64 TTL = 2;
+}

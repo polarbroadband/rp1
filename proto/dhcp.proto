@@ -1,0 +1,26 @@
+syntax = "proto3";
+package dhcp;
+
+// import "google/protobuf/timestamp.proto";
+
+option go_package = "pb";
+
+message Network {
+    string LinkAddr = 1;
+    string Gateway = 2;
+    string Prefix = 3;
+    string SubnetMask = 4;
+    string Redirect = 5;
+    
+    int64 TTL = 3;
+    repeated Pool Pools = 4;
+}
+
+message Pool {
+    string Begin = 1;
+    string End = 2;
+}
+
+message Zone {
+    repeated Record Records = 1;
+}

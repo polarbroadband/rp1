@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitops
+  labels:
+    service: gitops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: gitops
+  template:
+    metadata:
+      labels:
+        service: gitops
+    spec:
+      containers:
+      - name: gitops-svr
+        image: polarbroadband/godev:0.1
+        command: ['tail', '-f', '/dev/null']
+        workingDir: /go/src/main
+        volumeMounts:
+        - mountPath: /go/src
+          name: src
+        ports:
+        - containerPort: 8060
+          protocol: TCP
+          name: gitops-api
+        envFrom:
+        - secretRef:
+            name: cirrus-gitops
+        - secretRef:
+            name: cirrus-etcd
+        env:
+        - name: ETCD_ENDPOINTS
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_ENDPOINTS
+        - name: ETCD_DIAL_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_DIAL_TIMEOUT
+        - name: ETCD_OPS_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_OPS_TIMEOUT
+        - name: ETCD_IaC_DHCP
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_IaC_DHCP
+        - name: ETCD_IaC_DNS
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-etcd
+              key: ETCD_IaC_DNS
+        - name: GIT_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: cirrus-gitops
+              key: GIT_API_URL
+      volumes:
+      - name: src
+        hostPath:
+          # directory location on host -- minikube container
+          path: /rp1/gitops
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitops
+spec:
+  selector:
+    service: gitops
+  # type: LoadBalancer
+  type: NodePort
+  ports:
+  - name: gitops-api
+    protocol: TCP
+    port: 8060
+    targetPort: gitops-api
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cirrus-gitops
+data:
+  GIT_API_URL: "http://192.168.49.3/api/v4"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cirrus-etcd
+data:
+  ETCD_ENDPOINTS: "etcd:2379"
+  ETCD_DIAL_TIMEOUT: "5s"
+  ETCD_OPS_TIMEOUT: "3s"
+  ETCD_IaC_DNS: "/cirrus/iac/dns"
+  ETCD_IaC_DHCP: "/cirrus/iac/dhcp"
