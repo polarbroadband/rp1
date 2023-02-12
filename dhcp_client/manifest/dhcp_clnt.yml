@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dhcp-clnt
+  labels:
+    cirrus: iac
+    service: dhcp-clnt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: dhcp-clnt
+  template:
+    metadata:
+      labels:
+        service: dhcp-clnt
+    spec:
+      containers:
+      - name: dhcp-clnt
+        image: polarbroadband/godev:0.1
+        command: ['tail', '-f', '/dev/null']
+        workingDir: /go/src/main
+        volumeMounts:
+        - mountPath: /go/src
+          name: src
+        ports:
+        - containerPort: 547
+          protocol: UDP
+        - containerPort: 546
+          protocol: UDP
+      volumes:
+      - name: src
+        hostPath:
+          path: /rp1/dhcp_client
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dhcp-clnt
+spec:
+  selector:
+    service: dhcp-clnt
+  ports:
+  - name: dhcp-clnt
+    protocol: UDP
+    port: 546
+  - name: dhcp-relay
+    protocol: UDP
+    port: 547

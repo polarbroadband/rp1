@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -15,6 +16,9 @@ import (
 	etcd "go.etcd.io/etcd/client/v3"
 
 	pkgdns "github.com/miekg/dns"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/sirupsen/logrus"
 )
@@ -34,10 +38,44 @@ var (
 	READY          = false
 )
 
+type Metrics struct {
+	AuthZone prometheus.Gauge
+	Request  *prometheus.CounterVec
+}
+
+func NewMetrics(reg prometheus.Registerer) *Metrics {
+	m := &Metrics{
+		AuthZone: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "dns_zone_records",
+			Help: "Current configured DNS authoritive zone records",
+		}),
+		Request: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "dns_requests_total",
+				Help: "Number of received DNS requests",
+			},
+			[]string{"resolve"},
+		),
+	}
+	reg.MustRegister(m.AuthZone)
+	reg.MustRegister(m.Request)
+	return m
+}
+
 type BaseDNS struct {
 	Locker *sync.RWMutex
 	*dns.Zone
+	*Metrics
 	Log *logrus.Entry
+}
+
+func (b *BaseDNS) RecordCount() (c float64) {
+	b.Locker.RLock()
+	defer b.Locker.RUnlock()
+	for _, v := range b.Records {
+		c += float64(len(v.Type))
+	}
+	return c
 }
 
 func (b *BaseDNS) Update(data *dns.Zone) {
@@ -91,8 +129,10 @@ func (b *BaseDNS) ServeDNS(w pkgdns.ResponseWriter, r *pkgdns.Msg) {
 						A:   net.ParseIP(addr),
 					})
 				}
+				b.Request.With(prometheus.Labels{"resolve": "success"}).Inc()
 			} else {
 				log.Info("DNS query received, no records")
+				b.Request.With(prometheus.Labels{"resolve": "fail"}).Inc()
 			}
 		case pkgdns.TypeAAAA:
 			msg.Authoritative = true
@@ -110,11 +150,14 @@ func (b *BaseDNS) ServeDNS(w pkgdns.ResponseWriter, r *pkgdns.Msg) {
 						AAAA: net.ParseIP(addr),
 					})
 				}
+				b.Request.With(prometheus.Labels{"resolve": "success"}).Inc()
 			} else {
 				log.Info("DNS query received, no records")
+				b.Request.With(prometheus.Labels{"resolve": "fail"}).Inc()
 			}
 		default:
 			log.Info("DNS query received, unsupported type")
+			b.Request.With(prometheus.Labels{"resolve": "fail"}).Inc()
 		}
 	}
 	w.WriteMsg(&msg)
@@ -151,7 +194,8 @@ func main() {
 	}
 	defer depot.Cancel()
 
-	base := BaseDNS{&sync.RWMutex{}, &dns.Zone{}, log}
+	reg := prometheus.NewRegistry()
+	base := BaseDNS{&sync.RWMutex{}, &dns.Zone{}, NewMetrics(reg), log}
 
 	if current == nil {
 		log.Warnf("server not ready, zone data not available")
@@ -160,6 +204,7 @@ func main() {
 			log.Fatal(err)
 		}
 		READY = true
+		base.AuthZone.Set(base.RecordCount())
 		fmt.Println("Current " + base.String())
 	}
 
@@ -174,17 +219,20 @@ func main() {
 			fmt.Println("New " + base.String())
 
 			READY = true
-			fmt.Println("next loop")
+			base.AuthZone.Set(base.RecordCount())
 		}
 	}()
 
-	srv := &pkgdns.Server{
-		Addr:    ":53",
-		Net:     "udp",
-		Handler: &base,
-	}
-	log.Infof("start DNS listener")
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("Failed to set udp listener %v\n", err)
-	}
+	go func() {
+		srv := &pkgdns.Server{
+			Addr:    ":53",
+			Net:     "udp",
+			Handler: &base,
+		}
+		log.Infof("start DNS listener")
+		log.Fatal(srv.ListenAndServe())
+	}()
+
+	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
+	log.Fatal(http.ListenAndServe(":2112", nil))
 }
