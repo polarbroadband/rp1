@@ -100,12 +100,16 @@ type GitLabCommit struct {
 	Repo float64
 }
 
-func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp) ([]GitLabBlob, error) {
+func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp, checkout bool) ([]GitLabBlob, error) {
+	url := fmt.Sprintf("projects/%v/repository/tree?", g.Repo)
+	if !checkout {
+		url += fmt.Sprintf("ref=%s&", g.SHA)
+	}
 	tree := []GitLabBlob{}
 	page := 1
 	for {
 		treePaged := []GitLabBlob{}
-		ep := fmt.Sprintf("projects/%v/repository/tree?ref=%s&recursive=true&pagination=keyset&page=%v&per_page=1&order_by=path&sort=asc", g.Repo, g.SHA, page)
+		ep := fmt.Sprintf("%srecursive=true&pagination=keyset&page=%v&per_page=100&order_by=path&sort=asc", url, page)
 		h, err := g.GitLab.Get(ep, &treePaged)
 		if err != nil {
 			return nil, fmt.Errorf("unable to retrieve repository tree, page %v, %v", page, err)
@@ -121,6 +125,9 @@ func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp) ([]GitLabBlob, err
 
 	resp := []GitLabBlob{}
 	for _, b := range tree {
+		if b.Type == "tree" {
+			continue
+		}
 		if filter == nil || filter.MatchString(b.Name) {
 
 			pretty.Printf("\n--- TREE PATH ---\n%# v\n\n", b.Path)
