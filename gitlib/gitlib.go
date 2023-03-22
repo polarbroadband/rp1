@@ -145,6 +145,7 @@ func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp, checkout bool) ([]
 	return resp, nil
 }
 
+// GetAddedFiles download the content of every added files of this commit
 func (g *GitLabCommit) GetAddedFiles() (map[string]*[]byte, error) {
 	if len(g.Added) == 0 {
 		return nil, nil
