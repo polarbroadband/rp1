@@ -7,11 +7,11 @@ import (
 	"regexp"
 
 	"net/http"
+	"net/url"
 
 	"encoding/json"
 
 	"github.com/kr/pretty"
-	"github.com/sirupsen/logrus"
 )
 
 type GitLab struct {
@@ -96,10 +96,8 @@ func (g *GitLab) GetFile(ep string, rb *[]byte) error {
 
 type GitLabCommit struct {
 	*GitLab
-	Repo   float64
-	Commit string
-
-	Log *logrus.Entry
+	*GitLabCheckoutCommit
+	Repo float64
 }
 
 func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp) ([]GitLabBlob, error) {
@@ -107,11 +105,10 @@ func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp) ([]GitLabBlob, err
 	page := 1
 	for {
 		treePaged := []GitLabBlob{}
-		ep := fmt.Sprintf("projects/%v/repository/tree?ref=%s&recursive=true&pagination=keyset&page=%v&per_page=1&order_by=path&sort=asc", g.Repo, g.Commit, page)
+		ep := fmt.Sprintf("projects/%v/repository/tree?ref=%s&recursive=true&pagination=keyset&page=%v&per_page=1&order_by=path&sort=asc", g.Repo, g.SHA, page)
 		h, err := g.GitLab.Get(ep, &treePaged)
 		if err != nil {
-			g.Log.WithError(err).Errorf("unable to retrieve repository tree, page %v", page)
-			return nil, err
+			return nil, fmt.Errorf("unable to retrieve repository tree, page %v, %v", page, err)
 		}
 		tree = append(tree, treePaged...)
 		if h.Get("X-Next-Page") == "" {
@@ -125,17 +122,65 @@ func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp) ([]GitLabBlob, err
 	resp := []GitLabBlob{}
 	for _, b := range tree {
 		if filter == nil || filter.MatchString(b.Name) {
-			g.Log.Info(b.Path)
+
+			pretty.Printf("\n--- TREE PATH ---\n%# v\n\n", b.Path)
+
 			b.Content = []byte{}
 			if err := g.GetFile(fmt.Sprintf("projects/%v/repository/blobs/%s/raw", g.Repo, b.ID), &b.Content); err != nil {
-				g.Log.WithError(err).Errorf("unable to load blob %s content", b.Path)
-				return nil, err
+				return nil, fmt.Errorf("unable to load blob %s content, %v", b.Path, err)
 			}
-			g.Log.Info(b.Content)
+
+			pretty.Printf("\n--- FILE CONTENT ---\n%# v\n\n", b.Content)
+
 			resp = append(resp, b)
 		}
 	}
 	return resp, nil
+}
+
+func (g *GitLabCommit) GetAddedFiles() (files map[string]*[]byte, err error) {
+	if len(g.Added) == 0 {
+		return nil, nil
+	}
+	for _, f := range g.Added {
+		var content []byte
+		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.SHA)
+		if err := g.GetFile(ep, &content); err != nil {
+			return nil, err
+		}
+		files[f] = &content
+	}
+	return files, nil
+}
+
+func (g *GitLabCommit) GetModifiedFiles() (files map[string]*[]byte, err error) {
+	if len(g.Modified) == 0 {
+		return nil, nil
+	}
+	for _, f := range g.Modified {
+		var content []byte
+		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.SHA)
+		if err := g.GetFile(ep, &content); err != nil {
+			return nil, err
+		}
+		files[f] = &content
+	}
+	return files, nil
+}
+
+func (g *GitLabCommit) GetRemovedFiles() (files map[string]*[]byte, err error) {
+	if len(g.Removed) == 0 {
+		return nil, nil
+	}
+	for _, f := range g.Removed {
+		var content []byte
+		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.SHA)
+		if err := g.GetFile(ep, &content); err != nil {
+			return nil, err
+		}
+		files[f] = &content
+	}
+	return files, nil
 }
 
 type GitLabBlob struct {
@@ -144,4 +189,34 @@ type GitLabBlob struct {
 	Path    string `json:"path"`
 	Type    string `json:"type"` // "blob" "tree"
 	Content []byte
+}
+
+type GitLabCheckoutCommit struct {
+	SHA      string   `json:"id"`
+	Added    []string `json:"added"`
+	Modified []string `json:"modified"`
+	Removed  []string `json:"removed"`
+}
+
+type GitLabWebhookEvent struct {
+	PreviousCommit string                  `json:"before"`
+	CheckoutCommit string                  `json:"checkout_sha"`
+	Commits        []*GitLabCheckoutCommit `json:"commits"`
+	Repo           struct {
+		ID   float64 `json:"id"`
+		Name string  `json:"name"`
+	} `json:"project"`
+}
+
+func (w *GitLabWebhookEvent) GetCheckoutCommit(g *GitLab) *GitLabCommit {
+	for _, c := range w.Commits {
+		if c.SHA == w.CheckoutCommit {
+			return &GitLabCommit{
+				GitLab:               g,
+				GitLabCheckoutCommit: c,
+				Repo:                 w.Repo.ID,
+			}
+		}
+	}
+	return nil
 }
