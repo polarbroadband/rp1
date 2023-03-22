@@ -145,10 +145,11 @@ func (g *GitLabCommit) GetRepoRawFiles(filter *regexp.Regexp, checkout bool) ([]
 	return resp, nil
 }
 
-func (g *GitLabCommit) GetAddedFiles() (files map[string]*[]byte, err error) {
+func (g *GitLabCommit) GetAddedFiles() (map[string]*[]byte, error) {
 	if len(g.Added) == 0 {
 		return nil, nil
 	}
+	files := map[string]*[]byte{}
 	for _, f := range g.Added {
 		var content []byte
 		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.SHA)
@@ -160,10 +161,11 @@ func (g *GitLabCommit) GetAddedFiles() (files map[string]*[]byte, err error) {
 	return files, nil
 }
 
-func (g *GitLabCommit) GetModifiedFiles() (files map[string]*[]byte, err error) {
+func (g *GitLabCommit) GetModifiedFiles() (map[string]*[]byte, error) {
 	if len(g.Modified) == 0 {
 		return nil, nil
 	}
+	files := map[string]*[]byte{}
 	for _, f := range g.Modified {
 		var content []byte
 		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.SHA)
@@ -175,10 +177,11 @@ func (g *GitLabCommit) GetModifiedFiles() (files map[string]*[]byte, err error) 
 	return files, nil
 }
 
-func (g *GitLabCommit) GetRemovedFiles() (files map[string]*[]byte, err error) {
+func (g *GitLabCommit) GetRemovedFiles() (map[string]*[]byte, error) {
 	if len(g.Removed) == 0 {
 		return nil, nil
 	}
+	files := map[string]*[]byte{}
 	for _, f := range g.Removed {
 		var content []byte
 		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.SHA)
