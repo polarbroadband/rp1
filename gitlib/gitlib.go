@@ -185,7 +185,7 @@ func (g *GitLabCommit) GetRemovedFiles() (map[string]*[]byte, error) {
 	files := map[string]*[]byte{}
 	for _, f := range g.Removed {
 		var content []byte
-		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.SHA)
+		ep := fmt.Sprintf("projects/%v/repository/files/%s/raw?ref=%s", g.Repo, url.QueryEscape(f), g.PreSHA)
 		if err := g.GetFile(ep, &content); err != nil {
 			return nil, err
 		}
@@ -207,6 +207,7 @@ type GitLabCheckoutCommit struct {
 	Added    []string `json:"added"`
 	Modified []string `json:"modified"`
 	Removed  []string `json:"removed"`
+	PreSHA   string
 }
 
 type GitLabWebhookEvent struct {
@@ -222,6 +223,7 @@ type GitLabWebhookEvent struct {
 func (w *GitLabWebhookEvent) GetCheckoutCommit(g *GitLab) *GitLabCommit {
 	for _, c := range w.Commits {
 		if c.SHA == w.CheckoutCommit {
+			c.PreSHA = w.PreviousCommit
 			return &GitLabCommit{
 				GitLab:               g,
 				GitLabCheckoutCommit: c,
